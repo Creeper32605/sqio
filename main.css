@@ -1,0 +1,52 @@
+body {
+	background: #383838;
+}
+#main-canvas {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	-webkit-transform: translate(-50%, -50%);
+	-moz-transform: translate(-50%, -50%);
+	-ms-transform: translate(-50%, -50%);
+	-o-transform: translate(-50%, -50%);
+	transform: translate(-50%, -50%);
+	box-shadow: 0 0 15px 22px rgba(0, 0, 0, 0.5), 0 0 0 20px #000, 0 0 0 22px #eee;
+	width: 0;
+	height: 0;
+	border-radius: 2px;
+}
+#fullscreen-btn {
+	position: fixed;
+	bottom: 0;
+	right: 0;
+	width: 20px;
+	height: 20px;
+	margin: 10px;
+	background: rgba(255, 255, 255, 0.2);
+	border: none;
+	border-radius: 10px;
+}
+#fullscreen-btn::before,
+#fullscreen-btn::after {
+	content: '';
+	position: absolute;
+	border: 1px solid #fff;
+	width: 5px;
+	height: 5px;
+}
+#fullscreen-btn::before {
+	border-top-color: transparent;
+	border-right-color: transparent;
+	left: 5px;
+	bottom: 5px;
+}
+#fullscreen-btn::after {
+	border-left-color: transparent;
+	border-bottom-color: transparent;
+	right: 5px;
+	top: 5px;
+}
+#fullscreen-btn:focus {
+	outline: none;
+	background: rgba(255, 255, 255, 0.3);
+}
