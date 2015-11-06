@@ -543,13 +543,4 @@
 			}
 		}
 	};
-
-	let term = new io.Terminal();
-	setInterval(function() {
-		term.print('scroll & wrap test' + (new Array(Math.floor(Math.random() * 64)).join('-')));
-		let cp = term.cursorPos;
-		term.cursorPos = [0, 1];
-		term.print('Overwrite test!          ');
-		term.cursorPos = cp;
-	}, 400);
 }
