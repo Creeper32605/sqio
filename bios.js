@@ -78,6 +78,9 @@
 			var f_ = 255 / 15;
 			return `rgba(${Math.round(this.r * f_)},${Math.round(this.g * f_)},${Math.round(this.b * f_)},${this.a / 15})`;
 		}
+		toBitRGB() {
+			return (this.r << 8) + (this.g << 4) + this.b;
+		}
 		clone(or, og, ob, oa) {
 			return new io.Color(or || this.r, og || this.g, ob || this.b, oa || this.a);
 		}
@@ -98,6 +101,9 @@
 		}
 		static white() {
 			return new io.Color(15, 15, 15);
+		}
+		static fromBitRGB(n) {
+			return new io.Color(n >> 8 & 0b1111, n >> 4 & 0b1111, n & 0b1111);
 		}
 	};
 	io.drawPixel = function(x, y, c) {
@@ -139,7 +145,7 @@
 		')':     [0b00100, 0b00010, 0b00010, 0b00010, 0b00010, 0b00010, 0b00100, 0b00000],
 		'*':     [0b00000, 0b00100, 0b10101, 0b01110, 0b10101, 0b00100, 0b00000, 0b00000],
 		'+':     [0b00000, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0b00000, 0b00000],
-		',':     [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00100, 0b00000],
+		',':     [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00100, 0b00100],
 		'-':     [0b00000, 0b00000, 0b00000, 0b01110, 0b00000, 0b00000, 0b00000, 0b00000],
 		'.':     [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00000],
 		'/':     [0b00001, 0b00010, 0b00010, 0b00100, 0b01000, 0b01000, 0b10000, 0b00000],
@@ -314,4 +320,236 @@
 			}
 		}
 	});
+
+	// string with color and bold options
+	// style property has 13 bits
+	// first 12 bits: R, G, B (each 4 bits) values of the color
+	// 13th bit: bold
+	io.FormattedString = class FormattedString {
+		constructor() {
+			this.parts = [];
+			this.length = 0;
+			for (let arg of arguments) {
+				if (typeof arg == 'string') {
+					this.parts.push([arg, 0b1111111111110]);
+					this.length += arg.length;
+				} else if (arg instanceof Array) {
+					this.parts.push(['' + arg[0], arg[1] ? (+arg[1] & 0b1111111111111) : 0b1111111111110]);
+					this.length += ('' + arg[0]).length;
+				}
+			}
+		}
+		updateLength() {
+			this.length = 0;
+			for (let item of this.parts) {
+				this.length += item[0].length;
+			}
+		}
+		setStyle(part, style) {
+			this.parts[part][1] = style & 0b1111111111111;
+		}
+		setContent(part, content) {
+			this.parts[part][0] = '' + content;
+			this.updateLength();
+		}
+		addPart(content, style) {
+			this.parts.push(['' + content, +style & 0b1111111111111]);
+			this.length += content.length;
+		}
+		partIndexOf(index) {
+			if (index > this.length - 1) return null;
+			let idx = 0;
+			for (let pi in this.parts) {
+				let part = this.parts[pi];
+				let pidx = idx;
+				idx += part[0].length;
+				if (idx >= index) {
+					return [+pi, index - pidx];
+				}
+			}
+		}
+		toPlainText() {
+			let str = '';
+			for (let part of this.parts) {
+				str += part[0];
+			}
+			return str;
+		}
+		split(chars, frontPadding) {
+			// splits this every {chars} characters with optional frontPadding (indent in the first line)
+			let pos = +frontPadding || 0;
+			let lines = [];
+			let line;
+			for (let part of this.parts) {
+				if (line && line[1] != part[1]) {
+					line.push(['', part[1]]);
+				} else {
+					line = [['', part[1]]];
+				}
+				for (let char of part[0]) {
+					if (pos < chars) {
+						line[line.length - 1][0] += char;
+					} else {
+						pos = 0;
+						lines.push(line);
+						line = [[char, part[1]]];
+					}
+					pos++;
+				}
+			}
+			if (line && line[0])
+				lines.push(line);
+			for (let i in lines) {
+				lines[i] = new io.FormattedString(...lines[i]);
+			}
+			return lines;
+		}
+		overwrite(index, fstring, append) {
+			// never touch this monstrousity again
+			// this just overwrites this FormattedString at a given index with another one
+			// if append is true it allows for overflow behind
+			var pos = index;
+			// space is a variable used lateron
+			let space = true;
+			if (pos === undefined) return this;
+			if (!fstring.length) return this;
+			for (let part of fstring.parts) {
+				for (let char of part[0]) {
+					let idx = this.partIndexOf(pos);
+					// looks like the index is outside the string length
+					if (!idx && append) {
+						// only add spaces inbetween if append is true and space is true
+						if (pos > this.length && space) {
+							this.parts.push([new Array(pos - this.length + 1).join(' '), 0x1ffe]);
+							space = false;
+						}
+						this.parts.push([char, part[1]]);
+						continue;
+					} else if (!idx) continue;
+					// the part at the target index
+					let pt = this.parts[idx[0]];
+					// does the part match the wanted styles?
+					if (pt[1] != part[1]) {
+						// nope.
+						// determine if the character goes inside the part or just behind it
+						let idxi = idx[1] == pt[0].length;
+						// split the part in two, right where the character goes
+						let pt2 = pt[0].substr(idx[1] + 1);
+						pt[0] = pt[0].substr(0, idx[1]);
+						// if the second part isn't empty, put it behind the original part
+						if (pt2 !== '')
+							this.parts.splice(idx[0] + 1, 0, [pt2, pt[1]]);
+						else if (pt2 === '' && idxi) {
+							// if it's empty, find the next non-empty part and take the first character
+							// but only if the character goes directly after the part, not inside the part
+							let counter = 0;
+							while (this.parts[idx[0] + (++counter)] && this.parts[idx[0] + counter][0] === '') {
+								// already counting above, nothing to do here
+							}
+							if (this.parts[idx[0] + counter]) {
+								let rmp = this.parts[idx[0] + counter];
+								rmp[0] = rmp[0].substr(1);
+								if (rmp[0] === '')
+									this.parts.splice(idx[0] + counter, 1);
+							}
+						}
+						// create a new part and put the character in it
+						this.parts.splice(idx[0] + 1, 0, [char, part[1]]);
+					} else {
+						// it matches the styles. The character will now be put in this part
+						// and won't create a new part
+
+						// check if the character goes right behind the part
+						if (idx[1] >= pt[0].length) {
+							// if it does, find the next non-empty part and take the first character
+							let counter = 0;
+							while (this.parts[idx[0] + (++counter)] && this.parts[idx[0] + counter][0] === '') {
+								// already counting above, nothing to do here
+							}
+							if (this.parts[idx[0] + counter]) {
+								let rmp = this.parts[idx[0] + counter];
+								rmp[0] = rmp[0].substr(1);
+								if (rmp[0] === '')
+									this.parts.splice(idx[0] + counter, 1);
+							}
+						}
+						// put the character in the part
+						pt[0] = pt[0].substr(0, idx[1]) + char + pt[0].substr(idx[1] + 1);
+					}
+					pos++;
+				}
+			}
+			this.updateLength();
+			return this;
+		}
+	};
+
+	// simple scrolling terminal
+	io.Terminal = class Terminal {
+		constructor() {
+			this.width = Math.floor(io.getWidth() / 6) - 1;
+			this.height = Math.floor(io.getHeight() / 10) - 1;
+			this.lines = [];
+			for (let i = 0; i < this.height; i++) {
+				this.lines.push(new io.FormattedString(''));
+			}
+			this.cursorPos = [0, 0];
+		}
+		write(formatted) {
+			// (over-)writes formatted text at cursor position and draws
+			for (let part of formatted.parts) {
+				if (!this.lines[this.cursorPos[1]])
+					this.lines[this.cursorPos[1]] = new io.FormattedString('');
+				this.lines[this.cursorPos[1]].overwrite(this.cursorPos[0], new io.FormattedString(part), true);
+				this.cursorPos[0] += part[0].length;
+				if (this.cursorPos[0] > this.width) {
+					this.cursorPos[0] = this.width;
+					break;
+				}
+			}
+			this.draw();
+		}
+		print(line) {
+			// prints a line, supports simple wrapping
+			if (!(line instanceof io.FormattedString))
+				line = new io.FormattedString(line);
+			let lines = line.split(this.width, this.cursorPos[0]);
+			for (let ln of lines) {
+				if (this.cursorPos[1] > this.height) {
+					this.scroll();
+					this.cursorPos[1] = this.height;
+				}
+				this.write(ln);
+				this.cursorPos = [0, this.cursorPos[1] + 1];
+			}
+		}
+		scroll() {
+			// "scrolls" all lines up by 1
+			this.lines.splice(0, 1);
+		}
+		draw() {
+			io.drawRect(0, 0, io.getWidth(), io.getHeight(), io.Color.black());
+			let dy = 0;
+			for (let line of this.lines) {
+				let cx = 0;
+				for (let part of line.parts) {
+					io.drawText(1 + cx * 6, 1 + dy * 10, part[0], io.Color.fromBitRGB(part[1] >> 1));
+					if (part[1] & 1 == 1) {
+						io.drawText(2 + cx * 6, 1 + dy * 10, part[0], io.Color.fromBitRGB(part[1] >> 1));
+					}
+					cx += part[0].length;
+				}
+				dy++;
+			}
+		}
+	};
+
+	let term = new io.Terminal();
+	setInterval(function() {
+		term.print('scroll & wrap test' + (new Array(Math.floor(Math.random() * 64)).join('-')));
+		let cp = term.cursorPos;
+		term.cursorPos = [0, 1];
+		term.print('Overwrite test!          ');
+		term.cursorPos = cp;
+	}, 400);
 }
