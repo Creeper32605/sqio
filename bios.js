@@ -57,6 +57,9 @@
 	});
 
 	var io = {};
+
+	// this is the color class used everywhere where something is drawn. It's limited to
+	// 4096 colors and 16 alpha values
 	io.Color = class Color {
 		constructor(r, g, b, a) {
 			this.r = Math.round(Math.min(15, Math.max(0, r)));
@@ -99,6 +102,8 @@
 	};
 	io.drawPixel = function(x, y, c) {
 		let m_ = cfg.pixelSize * (window.devicePixelRatio || 1);
+		// using a string here will actually allow using all 4228250625 colors
+		// and although it shouldn't be allowed it's here for performance reasons
 		ctx.fillStyle = (typeof c == 'string' ? c : c.toRgba());
 		x = Math.trunc(x);
 		y = Math.trunc(y);
@@ -117,7 +122,9 @@
 	// screen is now black
 	io.drawRect(0, 0, 240, 150, io.Color.black());
 
-	// each character is 5 pixels wide and 8 pixels tall.
+	// default font
+	// each character is 5 pixels wide and 8 pixels tall
+	// just ASCII characters for now
 	io.font = {
 		unknown: [0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11111, 0b00000],
 		' ':     [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
@@ -217,6 +224,7 @@
 		'~':     [0b00000, 0b00000, 0b01000, 0b10101, 0b00010, 0b00000, 0b00000, 0b00000]
 	};
 
+	// draws text on screen using the font above
 	io.drawText = function(x, y, text, c) {
 		let dx = x;
 		let ny = parseInt(y);
@@ -237,6 +245,9 @@
 			dx += 6;
 		}
 	};
+	// similar to how drawText draws the font, this draws a 'map' (an array with strings)
+	// on the screen in a specified color. Uses strings though as Javascript has great
+	// difficulties handling big numbers
 	io.drawMap = function(x, y, map, c) {
 		c = c || io.Color.white();
 		let col = c.toRgba();
@@ -255,6 +266,8 @@
 	io.getHeight = function() {
 		return cfg.height / cfg.pixelSize;
 	};
+
+	// user events
 	let eventListeners = {
 		keypress: [],
 		keydown:  [],
@@ -272,6 +285,8 @@
 			}
 		}
 	};
+
+	// bind events to document
 	document.addEventListener('keypress', function(e) {
 		for (let fn of eventListeners.keypress) {
 			try {
@@ -299,10 +314,4 @@
 			}
 		}
 	});
-
-	io.drawText(1,  1, 'Font test');
-	io.drawText(2,  1, 'Font test');
-	io.drawText(1, 11, ' !"#$%&\'()*+,-./012356789:;<=>?@');
-	io.drawText(1, 21, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`');
-	io.drawText(1, 31, 'abcdefghijklmnopqrstuvwxyz~');
 }
