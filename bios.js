@@ -133,6 +133,7 @@
 	// just ASCII characters for now
 	io.font = {
 		unknown: [0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11111, 0b00000],
+		caret:   [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b11111],
 		' ':     [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
 		'!':     [0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00000, 0b00100, 0b00000],
 		'"':     [0b01010, 0b01010, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
@@ -494,6 +495,12 @@
 				this.lines.push(new io.FormattedString(''));
 			}
 			this.cursorPos = [0, 0];
+			this.state = {
+				cBlinking: false,
+				cBlinkState: false,
+				cBInterval: -1
+			};
+			this.setCursorBlink(true);
 		}
 		write(formatted) {
 			// (over-)writes formatted text at cursor position and draws
@@ -522,6 +529,7 @@
 				this.write(ln);
 				this.cursorPos = [0, this.cursorPos[1] + 1];
 			}
+			this.state.cBlinkState = true;
 		}
 		scroll() {
 			// "scrolls" all lines up by 1
@@ -541,6 +549,60 @@
 				}
 				dy++;
 			}
+			if (this.state.cBlinking && this.state.cBlinkState) {
+				io.drawText(1 + this.cursorPos[0] * 6, 1 + this.cursorPos[1] * 10, ['caret'], io.Color.white());
+			}
+		}
+		setCursorBlink(b) {
+			if (b) {
+				this.state.cBlinking = true;
+				this.state.cBlinkState = true;
+				this.state.cBInterval = setInterval(() => {
+					this.state.cBlinkState = !this.state.cBlinkState;
+					this.draw();
+				}, 500);
+			} else {
+				this.state.cBlinking = false;
+				this.state.cBlinkState = false;
+				clearInterval(this.state.cBInterval);
+				this.draw();
+			}
 		}
 	};
+
+	// loads a js file
+	var loadScript = function(src) {
+		return new Promise(function(resolve, reject) {
+			let scr = document.createElement('script');
+			scr.src = src;
+			scr.onload = function() {
+				resolve();
+			};
+			scr.onerror = function(e) {
+				reject(e);
+			};
+			document.body.appendChild(scr);
+		});
+	};
+	let errr = 0b1111000000000;
+	let stdout = new io.Terminal();
+	stdout.print('initialising');
+	stdout.print('loading vfs.js');
+	loadScript('vfs.js').then(function() {
+		stdout.print('loaded vfs.js');
+		if (!window.vfs) {
+			stdout.print(['vfs not available', errr]);
+			throw new Error('vfs not available');
+		}
+		stdout.print('creating vfs');
+		try {
+			new vfs.FileSystem(localStorage.vfs);
+		} catch (err) {
+			stdout.print(['failed: ' + err, errr]);
+			throw new Error('failed to create vfs');
+		}
+	}).catch(function() {
+		stdout.print(['error whilst initialising', errr]);
+		stdout.print(['[idle]', errr]);
+	});
 }
